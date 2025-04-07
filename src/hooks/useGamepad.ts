@@ -7,7 +7,6 @@ const useGamepad = () => {
 
   useEffect(() => {
     const handleGamepadConnected = (event: GamepadEvent) => {
-      if (!event.gamepad) return;
       setGamepad(event.gamepad);
     };
 
