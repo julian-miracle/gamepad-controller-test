@@ -53,10 +53,10 @@ const useGamepad = () => {
           if (gamePadInUse.vibrationActuator) {
             gamePadInUse.vibrationActuator.playEffect("dual-rumble", {
               duration: 100,
-              strongMagnitude: 0.1,
-              weakMagnitude: 0.1,
-              leftTrigger: 0.1,
-              rightTrigger: 0.1,
+              strongMagnitude: 0.2,
+              weakMagnitude: 0.2,
+              leftTrigger: 0.2,
+              rightTrigger: 0.2,
             });
           }
         } else {
