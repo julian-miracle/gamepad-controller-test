@@ -13,9 +13,24 @@ const allowedGamepads = [
   "2In1 USB Joystick", // Genérico
 ];
 
+const vibrationDuration = 50;
+const vibrationIntensity = 0.3;
+const axisThreshold = 0.5;
+
 function useGamepadController(): Record<number, GamepadState> {
   const [gamepads, setGamepads] = useState<Record<number, GamepadState>>({});
   const requestRef = useRef<number | null>(null);
+  const prevState = useRef<Record<number, GamepadState>>({});
+
+  const hapticFeedback = (gamepad: Gamepad) => {
+    if (gamepad.vibrationActuator) {
+      gamepad.vibrationActuator.playEffect("dual-rumble", {
+        duration: vibrationDuration,
+        strongMagnitude: vibrationIntensity,
+        weakMagnitude: vibrationIntensity,
+      });
+    }
+  };
 
   useEffect(() => {
     const updateGamepads = () => {
@@ -23,18 +38,43 @@ function useGamepadController(): Record<number, GamepadState> {
       const newGamepads: Record<number, GamepadState> = {};
 
       for (let i = 0; i < gamepadList.length; i++) {
+        const gamepad = gamepadList[i];
         if (
-          gamepadList[i] &&
-          allowedGamepads.some((name) => gamepadList[i]!.id.includes(name))
+          gamepad &&
+          allowedGamepads.some((name) => gamepad.id.includes(name))
         ) {
           newGamepads[i] = {
-            id: gamepadList[i]!.id,
-            buttons: gamepadList[i]!.buttons.map((btn) => btn.pressed),
-            axes: [...gamepadList[i]!.axes],
+            id: gamepad.id,
+            buttons: gamepad.buttons.map((btn) => btn.pressed),
+            axes: [...gamepad.axes],
           };
+
+          const prev = prevState.current[i];
+
+          if (prev) {
+            const faceButtons = [0, 1, 2, 3];
+            const dpadButtons = [12, 13, 14, 15];
+
+            const buttonChanged = [...faceButtons, ...dpadButtons].some(
+              (index) => prev.buttons[index] !== newGamepads[i].buttons[index]
+            );
+
+            const axesChanged = newGamepads[i].axes.some(
+              (value, index) =>
+                (Math.abs(value) > axisThreshold ||
+                  Math.abs(value) > -axisThreshold) &&
+                Math.abs(value - prev.axes[index]) > 0.1
+            );
+
+            if (buttonChanged || axesChanged) {
+              hapticFeedback(gamepad);
+            }
+          }
         }
       }
+
       setGamepads(newGamepads);
+      prevState.current = newGamepads;
       requestRef.current = requestAnimationFrame(updateGamepads);
     };
 
