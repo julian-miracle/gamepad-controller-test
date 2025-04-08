@@ -3,23 +3,35 @@ import React, { useEffect, useState } from "react";
 import "./App.css";
 import useGamepadController from "./hooks/useGamepad";
 
-const FACE_1_INDEX = 0; // Índice de FACE_1 (X en PS, A en Xbox)
+const BUTTON_ACTIONS: Record<number, () => void> = {
+  0: () => console.log("FACE_1 (X/A) pressed"),
+  1: () => console.log("FACE_2 (O/B) pressed"),
+  2: () => console.log("FACE_3 (square/X) pressed"),
+  3: () => console.log("FACE_4 (triangle/Y) pressed"),
+  12: () => console.log("DPAD UP pressed"),
+  13: () => console.log("DPAD DOWN pressed"),
+};
 
 const App: React.FC = () => {
   const gamepads = useGamepadController();
-  const [buttonPressed, setButtonPressed] = useState(false);
+  const [pressedButtons, setPressedButtons] = useState<Record<number, boolean>>(
+    {}
+  );
 
   //Button press detection for reaction
   useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     Object.entries(gamepads).forEach(([index, gamepad]) => {
-      if (gamepad.buttons[FACE_1_INDEX] && !buttonPressed) {
-        console.log(`FACE_1 pressed with index - ${index}`);
-        setButtonPressed(true);
-      } else if (!gamepad.buttons[FACE_1_INDEX] && buttonPressed) {
-        setButtonPressed(false);
-      }
+      gamepad.buttons.forEach((pressed, buttonIndex) => {
+        if (pressed && !pressedButtons[buttonIndex]) {
+          BUTTON_ACTIONS[buttonIndex]?.();
+          setPressedButtons((prev) => ({ ...prev, [buttonIndex]: true }));
+        } else if (!pressed && pressedButtons[buttonIndex]) {
+          setPressedButtons((prev) => ({ ...prev, [buttonIndex]: false }));
+        }
+      });
     });
-  }, [gamepads, buttonPressed]);
+  }, [gamepads, pressedButtons]);
 
   return (
     <div>
