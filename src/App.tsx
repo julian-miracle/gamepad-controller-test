@@ -1,24 +1,25 @@
+import React from "react";
 
-import useGamepad from './hooks/useGamepad'
-import './App.css'
+import "./App.css";
+import useGamepadController from "./hooks/useGamepad";
 
-function App() {
-  const { gamepad, buttonPressed, axisMoved } = useGamepad();
+const App: React.FC = () => {
+  const gamepads = useGamepadController();
 
   return (
     <div>
-      <h1>Gamepad Detector</h1>
-      {gamepad ? (
-        <div>
-          <p>Controller: {gamepad.id}</p>
-          <p>{buttonPressed ? `Button Pressed: ${buttonPressed}` : 'No button pressed'}</p>
-          <p>{axisMoved ? `Axis Moved: ${axisMoved}` : 'No axis moved'}</p>
+      {Object.entries(gamepads).map(([index, gamepad]) => (
+        <div key={index}>
+          <h3>{gamepad.id}</h3>
+          <p>
+            Botones:{" "}
+            {gamepad.buttons.map((b, i) => (b ? `B${i} ` : "")).join("")}
+          </p>
+          <p>Ejes: {gamepad.axes.map((a, i) => `A${i}: ${a.toFixed(2)} `)}</p>
         </div>
-      ) : (
-        <p>No gamepad connected</p>
-      )}
+      ))}
     </div>
   );
 };
 
-export default App
+export default App;

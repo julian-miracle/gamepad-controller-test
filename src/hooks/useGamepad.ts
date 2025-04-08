@@ -1,82 +1,66 @@
 import { useState, useEffect } from "react";
 
-const useGamepad = () => {
-  const [gamepad, setGamepad] = useState<Gamepad | null>(null);
-  const [buttonPressed, setButtonPressed] = useState<string | null>(null);
-  const [axisMoved, setAxisMoved] = useState<string | null>(null);
+interface GamepadState {
+  id: string;
+  buttons: boolean[];
+  axes: number[];
+}
+
+const allowedGamepads = [
+  "Wireless Controller", // PlayStation
+  "Xbox Controller", // Xbox
+  "Xbox One Wired Controller", // Xbox One
+  "2In1 USB Joystick", // Genérico
+];
+
+function useGamepadController(): Record<number, GamepadState> {
+  const [gamepads, setGamepads] = useState<Record<number, GamepadState>>({});
 
   useEffect(() => {
-    const handleGamepadConnected = (event: GamepadEvent) => {
-      setGamepad(event.gamepad);
-    };
+    const updateGamepads = () => {
+      const gamepadList = navigator.getGamepads();
+      const newGamepads: Record<number, GamepadState> = {};
 
-    const handleGamepadDisconnected = () => {
-      setGamepad(null);
-    };
-
-    const updateGamepadState = () => {
-      const gamepads = navigator.getGamepads();
-      if (gamepads[0]) {
-        const gamePadInUse = gamepads[0];
-        setGamepad(gamePadInUse);
-
-        const buttons = gamePadInUse.buttons.map((button, index) => ({
-          pressed: button.pressed,
-          index,
-        }));
-        const pressedButton = buttons.find((button) => button.pressed);
-        if (pressedButton) {
-          setButtonPressed(`Button ${pressedButton.index}`);
-          if (
-            [0, 1, 2, 3, 12, 13, 14, 15].includes(pressedButton.index) &&
-            gamePadInUse.vibrationActuator
-          ) {
-            gamePadInUse.vibrationActuator.playEffect("dual-rumble", {
-              duration: 100,
-              strongMagnitude: 0.2,
-              weakMagnitude: 0.2,
-              leftTrigger: 0.2,
-              rightTrigger: 0.2,
-            });
-          }
-        } else {
-          setButtonPressed(null);
-        }
-
-        const axes = gamePadInUse.axes.map((axis, index) => ({
-          value: axis,
-          index,
-        }));
-        const movedAxis = axes.find((axis) => Math.abs(axis.value) > 0.1);
-        if (movedAxis) {
-          setAxisMoved(`Axis ${movedAxis.index}`);
-          if (gamePadInUse.vibrationActuator) {
-            gamePadInUse.vibrationActuator.playEffect("dual-rumble", {
-              duration: 100,
-              strongMagnitude: 0.2,
-              weakMagnitude: 0.2,
-              leftTrigger: 0.2,
-              rightTrigger: 0.2,
-            });
-          }
-        } else {
-          setAxisMoved(null);
+      for (let i = 0; i < gamepadList.length; i++) {
+        if (
+          gamepadList[i] &&
+          allowedGamepads.some((name) => gamepadList[i]!.id.includes(name))
+        ) {
+          newGamepads[i] = {
+            id: gamepadList[i]!.id,
+            buttons: gamepadList[i]!.buttons.map((btn) => btn.pressed),
+            axes: [...gamepadList[i]!.axes],
+          };
         }
       }
+      setGamepads(newGamepads);
     };
 
-    window.addEventListener("gamepadconnected", handleGamepadConnected);
-    window.addEventListener("gamepaddisconnected", handleGamepadDisconnected);
+    const handleConnect = () => {
+      updateGamepads();
+    };
 
-    const interval = setInterval(updateGamepadState, 100);
+    const handleDisconnect = (event: GamepadEvent) => {
+      setGamepads((prev) => {
+        const updated = { ...prev };
+        delete updated[event.gamepad.index];
+        return updated;
+      });
+    };
+
+    window.addEventListener("gamepadconnected", handleConnect);
+    window.addEventListener("gamepaddisconnected", handleDisconnect);
+
+    const interval = setInterval(updateGamepads, 100);
+
     return () => {
-      window.removeEventListener("gamepadconnected", handleGamepadConnected);
-      window.removeEventListener("gamepaddisconnected", handleGamepadDisconnected);
+      window.removeEventListener("gamepadconnected", handleConnect);
+      window.removeEventListener("gamepaddisconnected", handleDisconnect);
       clearInterval(interval);
     };
   }, []);
 
-  return { gamepad, buttonPressed, axisMoved };
-};
+  return gamepads;
+}
 
-export default useGamepad;
+export default useGamepadController;
