@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 interface GamepadState {
   id: string;
@@ -15,6 +15,7 @@ const allowedGamepads = [
 
 function useGamepadController(): Record<number, GamepadState> {
   const [gamepads, setGamepads] = useState<Record<number, GamepadState>>({});
+  const requestRef = useRef<number | null>(null);
 
   useEffect(() => {
     const updateGamepads = () => {
@@ -34,10 +35,13 @@ function useGamepadController(): Record<number, GamepadState> {
         }
       }
       setGamepads(newGamepads);
+      requestRef.current = requestAnimationFrame(updateGamepads);
     };
 
     const handleConnect = () => {
-      updateGamepads();
+      if (!requestRef.current) {
+        requestRef.current = requestAnimationFrame(updateGamepads);
+      }
     };
 
     const handleDisconnect = (event: GamepadEvent) => {
@@ -51,12 +55,14 @@ function useGamepadController(): Record<number, GamepadState> {
     window.addEventListener("gamepadconnected", handleConnect);
     window.addEventListener("gamepaddisconnected", handleDisconnect);
 
-    const interval = setInterval(updateGamepads, 100);
+    requestRef.current = requestAnimationFrame(updateGamepads);
 
     return () => {
       window.removeEventListener("gamepadconnected", handleConnect);
       window.removeEventListener("gamepaddisconnected", handleDisconnect);
-      clearInterval(interval);
+      if (requestRef.current) {
+        cancelAnimationFrame(requestRef.current);
+      }
     };
   }, []);
 
