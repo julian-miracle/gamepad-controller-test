@@ -10,6 +10,7 @@ const allowedGamepads = [
   "Wireless Controller", // PlayStation
   "Xbox Controller", // Xbox
   "Xbox One Wired Controller", // Xbox One
+  "Xbox 360 Controller (XInput STANDARD GAMEPAD)",
   "2In1 USB Joystick", // Genérico
 ];
 
