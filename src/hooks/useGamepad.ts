@@ -1,82 +1,142 @@
-import { useState, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
+import { isValidGamepad, applyDeadzone } from "../utils/gamepadUtils";
+import { detectControllerType } from "../utils/controllerDetection";
+import { getButtonName, getAxisName } from "../utils/controllerMappingUtils";
+import { GamepadState, GamepadConfig } from "../types/gamepad";
 
-const useGamepad = () => {
-  const [gamepad, setGamepad] = useState<Gamepad | null>(null);
-  const [buttonPressed, setButtonPressed] = useState<string | null>(null);
-  const [axisMoved, setAxisMoved] = useState<string | null>(null);
+const DEFAULT_CONFIG: GamepadConfig = {
+  deadzone: 0.1,
+  pollingInterval: 16, // ~60fps
+  buttonCombinations: {
+    // Add your button combinations here
+    // Example: "menu": [0, 1] // A + B buttons
+  },
+  vibrationEnabled: true,
+  vibrationIntensity: 0.5
+};
+
+const useGamepad = (config: GamepadConfig = DEFAULT_CONFIG) => {
+  const [state, setState] = useState<GamepadState>({
+    gamepad: null,
+    buttonPressed: null,
+    axisMoved: null,
+    connected: false,
+    buttons: {},
+    axes: {},
+    lastButtonPressed: null,
+    controllerType: 'unknown',
+    lastUpdate: Date.now()
+  });
+  const animationFrameRef = useRef<number | undefined>(undefined);
+  const buttonHistoryRef = useRef<string[]>([]);
+  const configRef = useRef<GamepadConfig>({ ...DEFAULT_CONFIG, ...config });
 
   useEffect(() => {
     const handleGamepadConnected = (event: GamepadEvent) => {
-      setGamepad(event.gamepad);
+      const gamepad = event.gamepad;
+      if (!isValidGamepad(gamepad)) {
+        console.warn('Invalid gamepad connected:', gamepad.id);
+        return;
+      }
+
+      const controllerType = detectControllerType(gamepad);
+      console.log('Gamepad connected:', gamepad.id, 'Type:', controllerType);
+      setState(prev => ({ ...prev, gamepad, connected: true, controllerType }));
     };
 
     const handleGamepadDisconnected = () => {
-      setGamepad(null);
+      setState(prev => ({ ...prev, gamepad: null, connected: false, controllerType: 'unknown' }));
     };
 
     const updateGamepadState = () => {
       const gamepads = navigator.getGamepads();
-      if (gamepads[0]) {
-        const gamePadInUse = gamepads[0];
-        setGamepad(gamePadInUse);
+      const gamepad = Array.from(gamepads).find(g => g !== null && isValidGamepad(g));
+      
+      if (gamepad) {
+        const controllerType = detectControllerType(gamepad);
+        
+        // Update buttons state
+        const buttons: Record<string, boolean> = {};
+        gamepad.buttons.forEach((button, index) => {
+          const buttonName = getButtonName(index, controllerType);
+          buttons[buttonName] = button.pressed;
+        });
 
-        const buttons = gamePadInUse.buttons.map((button, index) => ({
-          pressed: button.pressed,
-          index,
-        }));
-        const pressedButton = buttons.find((button) => button.pressed);
-        if (pressedButton) {
-          setButtonPressed(`Button ${pressedButton.index}`);
-          if (
-            [0, 1, 2, 3, 12, 13, 14, 15].includes(pressedButton.index) &&
-            gamePadInUse.vibrationActuator
-          ) {
-            gamePadInUse.vibrationActuator.playEffect("dual-rumble", {
-              duration: 100,
-              strongMagnitude: 0.2,
-              weakMagnitude: 0.2,
-              leftTrigger: 0.2,
-              rightTrigger: 0.2,
-            });
+        // Update axes state with deadzone
+        const axes: Record<string, number> = {};
+        gamepad.axes.forEach((axis, index) => {
+          const axisName = getAxisName(index, controllerType);
+          axes[axisName] = applyDeadzone(axis, configRef.current.deadzone!);
+        });
+
+        setState(prev => ({ ...prev, gamepad, buttons, axes, controllerType }));
+
+        // Check for button presses
+        const pressedButton = gamepad.buttons.findIndex(button => button.pressed);
+        if (pressedButton !== -1) {
+          const buttonName = getButtonName(pressedButton, controllerType);
+          setState(prev => ({ ...prev, buttonPressed: buttonName, lastButtonPressed: buttonName }));
+          
+          // Update button history
+          buttonHistoryRef.current = [buttonName, ...buttonHistoryRef.current].slice(0, 5);
+
+          // Trigger haptic feedback
+          if (configRef.current.vibrationEnabled && gamepad.vibrationActuator) {
+            try {
+              gamepad.vibrationActuator.playEffect("dual-rumble", {
+                duration: 100,
+                strongMagnitude: configRef.current.vibrationIntensity,
+                weakMagnitude: configRef.current.vibrationIntensity,
+              });
+            } catch (error) {
+              console.warn('Failed to trigger vibration:', error);
+            }
           }
         } else {
-          setButtonPressed(null);
+          setState(prev => ({ ...prev, buttonPressed: null }));
         }
 
-        const axes = gamePadInUse.axes.map((axis, index) => ({
-          value: axis,
-          index,
-        }));
-        const movedAxis = axes.find((axis) => Math.abs(axis.value) > 0.1);
-        if (movedAxis) {
-          setAxisMoved(`Axis ${movedAxis.index}`);
-          if (gamePadInUse.vibrationActuator) {
-            gamePadInUse.vibrationActuator.playEffect("dual-rumble", {
-              duration: 100,
-              strongMagnitude: 0.2,
-              weakMagnitude: 0.2,
-              leftTrigger: 0.2,
-              rightTrigger: 0.2,
-            });
-          }
+        // Check for axis movement
+        const movedAxis = gamepad.axes.findIndex(axis => 
+          Math.abs(applyDeadzone(axis, configRef.current.deadzone!)) > 0
+        );
+        if (movedAxis !== -1) {
+          const axisName = getAxisName(movedAxis, controllerType);
+          setState(prev => ({ ...prev, axisMoved: axisName }));
         } else {
-          setAxisMoved(null);
+          setState(prev => ({ ...prev, axisMoved: null }));
         }
       }
+
+      // Request next frame
+      animationFrameRef.current = requestAnimationFrame(updateGamepadState);
     };
 
     window.addEventListener("gamepadconnected", handleGamepadConnected);
     window.addEventListener("gamepaddisconnected", handleGamepadDisconnected);
 
-    const interval = setInterval(updateGamepadState, 100);
+    // Start the animation frame loop
+    animationFrameRef.current = requestAnimationFrame(updateGamepadState);
+
     return () => {
       window.removeEventListener("gamepadconnected", handleGamepadConnected);
       window.removeEventListener("gamepaddisconnected", handleGamepadDisconnected);
-      clearInterval(interval);
+      
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
     };
   }, []);
 
-  return { gamepad, buttonPressed, axisMoved };
+  // Helper function to check if a button combination was pressed
+  const wasButtonCombinationPressed = (combination: string[]): boolean => {
+    return combination.every(button => buttonHistoryRef.current.includes(button));
+  };
+
+  return {
+    ...state,
+    wasButtonCombinationPressed,
+  };
 };
 
 export default useGamepad;
